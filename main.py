@@ -809,9 +809,10 @@ if __name__ == "__main__":
             )
         )
 
-    template_bot.log_report_summary(forecast_reports)
+    # Print the summary first: log_report_summary raises when any question failed.
     print_run_summary_banner(
         forecast_reports,
         will_publish=publish_to_metaculus,
         tournament_url=TOURNAMENT_URLS.get(run_mode),
     )
+    template_bot.log_report_summary(forecast_reports)

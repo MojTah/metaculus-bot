@@ -37,11 +37,6 @@ jobs:
           version: "0.13.1"
       - name: Install dependencies
         run: uv sync --locked
-      - name: List Gemini models (names only)
-        run: |
-          curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" | python3 -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" || true
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - name: Run bot
         run: |
           if [ "$INPUT_DRY_RUN" = "true" ]; then
@@ -70,6 +65,13 @@ jobs:
           BOT_PREDICTIONS: ${{ vars.BOT_PREDICTIONS }}
           BOT_GEMINI_SEARCH: ${{ vars.BOT_GEMINI_SEARCH }}
           BOT_GEMINI_GROUNDED_MODELS: ${{ vars.BOT_GEMINI_GROUNDED_MODELS }}
+          BOT_GEMINI_BACKUP_MODELS: ${{ vars.BOT_GEMINI_BACKUP_MODELS }}
+      - name: List Gemini models (names only)
+        if: always()
+        run: |
+          curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" | python3 -c "import json,sys; print('\n'.join(m['name'] for m in json.load(sys.stdin).get('models', [])))" || true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4

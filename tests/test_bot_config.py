@@ -212,3 +212,19 @@ def test_throttle_spaces_calls(monkeypatch):
     asyncio.run(run())
     assert len(calls) == 3
     assert calls[1] - calls[0] >= 0.19 and calls[2] - calls[1] >= 0.19
+
+
+def test_fallback_chain_uses_backup_on_error(monkeypatch):
+    import asyncio
+
+    from bot_config import FallbackChainLlm
+
+    async def fake_invoke(self, prompt, system_prompt=None):
+        if self.model == "gemini/main":
+            raise RuntimeError("503 high demand")
+        return f"answer from {self.model}"
+
+    monkeypatch.setattr(ThrottledLlm, "invoke", fake_invoke)
+    llm = FallbackChainLlm(model="gemini/main", backups=["gemini/b1", "gemini/b2"])
+    # FallbackChainLlm.invoke calls super().invoke (patched) first, then backups
+    assert asyncio.run(llm.invoke("q")) == "answer from gemini/b1"

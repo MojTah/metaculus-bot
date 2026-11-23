@@ -23,6 +23,7 @@ _FREE_TIER_RPM = (
     ("flash", 5),
 )
 _DEFAULT_GROUNDED_MODELS = "gemini/gemini-2.5-flash,gemini/gemini-2.5-flash-lite"
+_DEFAULT_BACKUP_MODELS = "gemini/gemini-2.5-flash-lite,gemini/gemini-2.5-flash"
 
 
 def free_tier_interval(model: str) -> float:
@@ -84,6 +85,44 @@ class FallbackResearchLlm(ThrottledLlm):
             except Exception as e:  # quota or tool errors: try the next model
                 logger.warning("Grounded research with %s failed: %s", llm.model, str(e)[:200])
         return await self.fallback.invoke(prompt, system_prompt)
+
+
+class FallbackChainLlm(ThrottledLlm):
+    """Throttled model that tries backup models when the main one fails.
+
+    Free-tier Gemini often answers 503 "high demand" or 429 (daily limit);
+    a backup model keeps the question from failing.
+    """
+
+    def __init__(self, *args, backups: list[str] | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.backups: list[GeneralLlm] = [
+            ThrottledLlm(
+                model=m,
+                temperature=kwargs.get("temperature", 0.3),
+                timeout=kwargs.get("timeout", 120),
+                allowed_tries=2,
+            )
+            for m in (backups or [])
+        ]
+
+    async def invoke(self, prompt, system_prompt=None) -> str:  # type: ignore[override]
+        try:
+            return await super().invoke(prompt, system_prompt)
+        except Exception as first_error:
+            last_error: Exception = first_error
+            logger.warning("%s failed: %s", self.model, str(first_error)[:200])
+            for llm in self.backups:
+                try:
+                    return await llm.invoke(prompt, system_prompt)
+                except Exception as e:
+                    last_error = e
+                    logger.warning("Backup %s failed: %s", llm.model, str(e)[:200])
+            raise last_error
+
+
+def _split_models(value: str) -> list[str]:
+    return [m.strip() for m in value.split(",") if m.strip()]
 
 
 def _get_env(env: Mapping[str, str], key: str) -> str | None:
@@ -162,11 +201,22 @@ def build_llms(env: Mapping[str, str] | None = None) -> dict | None:
             _get_env(resolved, "BOT_GEMINI_CHEAP_MODEL")
             or "gemini/gemini-flash-lite-latest"
         )
-        default_llm = ThrottledLlm(
-            model=default_model, temperature=0.3, timeout=120, allowed_tries=4
+        backups = _split_models(
+            _get_env(resolved, "BOT_GEMINI_BACKUP_MODELS") or _DEFAULT_BACKUP_MODELS
         )
-        cheap_llm = ThrottledLlm(
-            model=cheap_model, temperature=0.3, timeout=120, allowed_tries=4
+        default_llm = FallbackChainLlm(
+            model=default_model,
+            temperature=0.3,
+            timeout=120,
+            allowed_tries=3,
+            backups=backups,
+        )
+        cheap_llm = FallbackChainLlm(
+            model=cheap_model,
+            temperature=0.3,
+            timeout=120,
+            allowed_tries=3,
+            backups=backups,
         )
         researcher: str | GeneralLlm
         search = (_get_env(resolved, "BOT_GEMINI_SEARCH") or "true").lower()
@@ -178,9 +228,13 @@ def build_llms(env: Mapping[str, str] | None = None) -> dict | None:
                 or _DEFAULT_GROUNDED_MODELS
             )
             researcher = FallbackResearchLlm(
-                [m.strip() for m in grounded.split(",") if m.strip()],
-                fallback=ThrottledLlm(
-                    model=default_model, temperature=0.1, timeout=120, allowed_tries=3
+                _split_models(grounded),
+                fallback=FallbackChainLlm(
+                    model=default_model,
+                    temperature=0.1,
+                    timeout=120,
+                    allowed_tries=3,
+                    backups=backups,
                 ),
             )
         else:
