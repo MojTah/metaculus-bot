@@ -5,7 +5,8 @@
   - `METACULUS_TOKEN` (required, bot account token)
   - `OPENROUTER_API_KEY` or `GEMINI_API_KEY` (at least one LLM key; OpenRouter wins if both are set; Gemini-only uses a free Google AI Studio key, LLM-only research, 3 predictions per question)
   - `ASKNEWS_API_KEY` (optional, or `ASKNEWS_CLIENT_ID` + `ASKNEWS_SECRET`) for AskNews research
-- **Repository variables** (optional): `BOT_FORECAST_MODEL`, `BOT_CHEAP_MODEL`, `BOT_RESEARCH_MODEL` (OpenRouter), `BOT_GEMINI_MODEL`, `BOT_GEMINI_CHEAP_MODEL` (Gemini), `BOT_PREDICTIONS` (1 to 10), `BOT_GEMINI_SEARCH` (`true` = Gemini research with Google Search grounding). See `bot_config.py`.
+- **Repository variables** (optional): `BOT_FORECAST_MODEL`, `BOT_CHEAP_MODEL`, `BOT_RESEARCH_MODEL` (OpenRouter), `BOT_GEMINI_MODEL`, `BOT_GEMINI_CHEAP_MODEL` (Gemini), `BOT_PREDICTIONS` (1 to 10), `BOT_GEMINI_SEARCH` (default `true`: research with Google Search grounding on free-tier Gemini 2.5 models, then plain fallback), `BOT_GEMINI_GROUNDED_MODELS` (comma list).
+- **Gemini free tier** (seen 2026-11-23): Flash Lite 15 RPM / 500 RPD, 2.5 Flash 5 RPM / 20 RPD; calls are throttled per model in `bot_config.py`. See `bot_config.py`.
 - **Manual run**: Actions → Manual run → Run workflow. Pick `mode` (`test_questions`, `minibench`, `tournament`). With `dry_run` on, nothing is published and reports are uploaded as an artifact.
 - **Tests**: `uv sync --group dev && uv run pytest -q` (also runs in the CI workflow).
 
