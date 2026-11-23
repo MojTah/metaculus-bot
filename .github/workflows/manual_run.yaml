@@ -1,0 +1,73 @@
+name: Manual run
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Forecasting mode"
+        required: true
+        default: "test_questions"
+        type: choice
+        options:
+          - test_questions
+          - minibench
+          - tournament
+      dry_run:
+        description: "Dry run (do not publish to Metaculus; save reports to reports/)"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  forecast_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.1"
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run bot
+        run: |
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            uv run python main.py --mode "$INPUT_MODE" --dry-run
+          else
+            uv run python main.py --mode "$INPUT_MODE"
+          fi
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
+          ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ASKNEWS_API_KEY: ${{ secrets.ASKNEWS_API_KEY }}
+          BOT_FORECAST_MODEL: ${{ vars.BOT_FORECAST_MODEL }}
+          BOT_CHEAP_MODEL: ${{ vars.BOT_CHEAP_MODEL }}
+          BOT_RESEARCH_MODEL: ${{ vars.BOT_RESEARCH_MODEL }}
+          BOT_GEMINI_MODEL: ${{ vars.BOT_GEMINI_MODEL }}
+          BOT_GEMINI_CHEAP_MODEL: ${{ vars.BOT_GEMINI_CHEAP_MODEL }}
+          BOT_PREDICTIONS: ${{ vars.BOT_PREDICTIONS }}
+          BOT_GEMINI_SEARCH: ${{ vars.BOT_GEMINI_SEARCH }}
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: reports/
+          if-no-files-found: ignore

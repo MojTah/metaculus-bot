@@ -684,6 +684,10 @@ class FallTemplateBot2026(ForecastBot):
 
 
 if __name__ == "__main__":
+    import os
+
+    from bot_config import active_provider, build_llms, predictions_per_report
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -693,46 +697,70 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["tournament", "metaculus_cup", "test_questions"],
+        choices=["tournament", "minibench", "metaculus_cup", "test_questions"],
         default="tournament",
         help="What to forecast on (default: tournament)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not publish forecasts and save reports to reports/",
+    )
     args = parser.parse_args()
-    run_mode: Literal["tournament", "metaculus_cup", "test_questions"] = args.mode
+    run_mode: Literal[
+        "tournament", "minibench", "metaculus_cup", "test_questions"
+    ] = args.mode
 
     check_environment(strict=True)
-    publish_to_metaculus = True
+    dry_run = args.dry_run or os.getenv("DRY_RUN", "").strip().lower() in (
+        "1",
+        "true",
+    )
+    publish_to_metaculus = not dry_run
+    reports_folder: str | None = "reports" if dry_run else None
+    if reports_folder is not None:
+        os.makedirs(reports_folder, exist_ok=True)
     print_startup_banner(run_mode, will_publish=publish_to_metaculus)
 
-    # Configure the bot. The `llms=` block below is commented out to use
-    # whichever default models forecasting-tools picks based on your env vars;
-    # uncomment and edit to pin specific models.
+    # Models come from bot_config.build_llms() (env vars / repo variables).
+    # When it returns None, forecasting-tools picks its defaults from the
+    # available API keys.
+    llms = build_llms()
+    provider = active_provider()
+    llm_kwargs = {"llms": llms} if llms is not None else {}
+
     template_bot = FallTemplateBot2026(
         research_reports_per_question=1,
-        predictions_per_research_report=5,
+        predictions_per_research_report=predictions_per_report(),
         use_research_summary_to_forecast=False,
         publish_reports_to_metaculus=publish_to_metaculus,
-        folder_to_save_reports_to=None,
+        folder_to_save_reports_to=reports_folder,
         skip_previously_forecasted_questions=True,
         extra_metadata_in_explanation=True,
-        # llms={
-        #     "default": GeneralLlm(
-        #         model="openrouter/openai/gpt-4o",
-        #         temperature=0.3,
-        #         timeout=40,
-        #         allowed_tries=2,
-        #     ),
-        #     "summarizer": "openai/gpt-4o-mini",
-        #     "researcher": "asknews/news-summaries",
-        #     "parser": "openai/gpt-4o-mini",
-        # },
+        **llm_kwargs,
     )
+
+    if llms is not None:
+        model_names = ", ".join(
+            f"{role}={GeneralLlm.to_model_name(model)}"
+            for role, model in llms.items()
+        )
+    else:
+        try:
+            model_names = ", ".join(
+                f"{role}={template_bot.get_llm(role, 'string_name')}"
+                for role in ("default", "summarizer", "parser", "researcher")
+            )
+        except Exception:
+            model_names = "forecasting-tools defaults"
+    logger.info("LLM provider=%s (%s)", provider, model_names)
 
     # Per-mode tournament URL shown in the summary banner footer. These
     # piggyback on the forecasting_tools SDK constants and need updating
     # whenever those rotate seasons.
     TOURNAMENT_URLS = {
         "tournament": "https://www.metaculus.com/tournament/fall-futureeval-2026/",
+        "minibench": "https://www.metaculus.com/tournament/minibench/",
         "metaculus_cup": "https://www.metaculus.com/tournament/metaculus-cup-fall-2026/",
         "test_questions": "https://www.metaculus.com/tournament/bot-testing-area/",
     }
@@ -753,6 +781,12 @@ if __name__ == "__main__":
             )
         )
         forecast_reports = seasonal_tournament_reports + minibench_reports
+    elif run_mode == "minibench":
+        forecast_reports = asyncio.run(
+            template_bot.forecast_on_tournament(
+                client.CURRENT_MINIBENCH_ID, return_exceptions=True
+            )
+        )
     elif run_mode == "metaculus_cup":
         # The Metaculus Cup may be uninitialized near the start of a season
         # (Jan/May/Sep). MetaculusClient.ACX_2025_TOURNAMENT = 32564 and

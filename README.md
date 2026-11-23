@@ -1,4 +1,14 @@
 # Simple Metaculus forecasting bot
+
+## Our setup
+- **Secrets** (`Settings → Secrets and variables → Actions → Secrets`):
+  - `METACULUS_TOKEN` (required, bot account token)
+  - `OPENROUTER_API_KEY` or `GEMINI_API_KEY` (at least one LLM key; OpenRouter wins if both are set; Gemini-only uses a free Google AI Studio key, LLM-only research, 3 predictions per question)
+  - `ASKNEWS_API_KEY` (optional, or `ASKNEWS_CLIENT_ID` + `ASKNEWS_SECRET`) for AskNews research
+- **Repository variables** (optional): `BOT_FORECAST_MODEL`, `BOT_CHEAP_MODEL`, `BOT_RESEARCH_MODEL` (OpenRouter), `BOT_GEMINI_MODEL`, `BOT_GEMINI_CHEAP_MODEL` (Gemini), `BOT_PREDICTIONS` (1 to 10), `BOT_GEMINI_SEARCH` (`true` = Gemini research with Google Search grounding). See `bot_config.py`.
+- **Manual run**: Actions → Manual run → Run workflow. Pick `mode` (`test_questions`, `minibench`, `tournament`). With `dry_run` on, nothing is published and reports are uploaded as an artifact.
+- **Tests**: `uv sync --group dev && uv run pytest -q` (also runs in the CI workflow).
+
 This repository contains a simple bot meant to get you started with creating your own bot for the AI Forecasting Tournament. Go to https://www.metaculus.com/futureeval/participate/ for more info and tournament rules (and then go to the  "Getting Started" section of our [resources](https://www.metaculus.com/notebooks/38928/ai-benchmark-resources/#want-to-join-the-ai-forecasting-benchmark) page).
 
 **Brand new to this?** You can get a working bot running in about 5 minutes without writing a single line of code — just fork this repo, paste two API keys into GitHub, and click "Run workflow". See **[Quick start](#quick-start--fork-and-use-github-actions)** below.
