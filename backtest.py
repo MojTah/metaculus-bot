@@ -66,6 +66,30 @@ def loo_scaled_score(pairs: list[tuple[float, float]]) -> float | None:
     return statistics.mean(scores)
 
 
+def _diagnose_missing_cp() -> None:
+    """Log what the API returns when no question has a community prediction."""
+    from forecasting_tools import ApiFilter
+
+    qs = asyncio.run(
+        MetaculusClient().get_questions_matching_filter(
+            ApiFilter(allowed_statuses=["open"], allowed_types=["binary"], num_forecasters_gte=30),
+            num_questions=5,
+            error_if_question_target_missed=False,
+        )
+    )
+    logger.warning("Diagnose: %d questions without the CP filter", len(qs))
+    for q in qs[:3]:
+        agg = (q.api_json.get("question") or {}).get("aggregations")
+        if isinstance(agg, dict):
+            shape = {k: (sorted(v.keys()) if isinstance(v, dict) else type(v).__name__) for k, v in agg.items()}
+            latest = {k: (v.get("latest") if isinstance(v, dict) else None) for k, v in agg.items()}
+        else:
+            shape, latest = type(agg).__name__, None
+        logger.warning("Diagnose %s: aggregations=%s latest=%s cp_hidden=%s",
+                       q.page_url, shape, str(latest)[:300],
+                       (q.api_json.get("question") or {}).get("cp_reveal_time"))
+
+
 class CachedResearchBot(FallTemplateBot2026):
     research_cache: dict[str, str] = {}
 
@@ -105,6 +129,8 @@ async def run(n: int, models: list[str], predictions: int, out_dir: str) -> dict
         False,
     )
     questions = [q for q in questions if q.community_prediction_at_access_time is not None]
+    if not questions:
+        await asyncio.to_thread(_diagnose_missing_cp)
     logger.info("Backtest on %d open binary questions", len(questions))
 
     preds: dict[str, dict[str, float]] = {}
