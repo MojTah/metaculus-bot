@@ -139,7 +139,7 @@ def fetch_manifold_questions(n: int, resolved_after: str, min_bettors: int = 20,
     after_ms = datetime.fromisoformat(resolved_after).replace(tzinfo=timezone.utc).timestamp() * 1000
     pool: list[dict] = []
     sort = "resolve-date"  # most recently resolved first
-    for offset in range(0, 2000, 100):
+    for offset in range(0, 1000, 100):
         params = {"term": "", "filter": "resolved", "contractType": "BINARY",
                   "sort": sort, "limit": 100, "offset": offset}
         r = requests.get(f"{api}/search-markets", timeout=30, params=params)
@@ -147,6 +147,8 @@ def fetch_manifold_questions(n: int, resolved_after: str, min_bettors: int = 20,
             logger.warning("Manifold sort %s refused, using newest", sort)
             sort = params["sort"] = "newest"
             r = requests.get(f"{api}/search-markets", timeout=30, params=params)
+        if r.status_code == 400 and pool:
+            break  # the API caps the offset
         r.raise_for_status()
         batch = r.json()
         if not batch:
