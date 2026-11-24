@@ -6,7 +6,7 @@ on:
       n:
         description: "Number of open binary questions"
         required: true
-        default: "20"
+        default: "30"
       models:
         description: "Comma-separated litellm model names"
         required: true
@@ -15,6 +15,14 @@ on:
         description: "Predictions per question"
         required: true
         default: "3"
+      resolved_after:
+        description: "Only questions scheduled to resolve after this date"
+        required: true
+        default: "2026-09-01"
+      tournaments:
+        description: "Comma-separated tournament slugs or ids (empty = all)"
+        required: false
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}
@@ -36,11 +44,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - name: Run backtest
-        run: uv run python backtest.py --n "$IN_N" --models "$IN_MODELS" --predictions "$IN_PRED"
+        run: uv run python backtest.py --n "$IN_N" --models "$IN_MODELS" --predictions "$IN_PRED" --resolved-after "$IN_AFTER" --tournaments "$IN_TOURN"
         env:
           IN_N: ${{ inputs.n }}
           IN_MODELS: ${{ inputs.models }}
           IN_PRED: ${{ inputs.predictions }}
+          IN_AFTER: ${{ inputs.resolved_after }}
+          IN_TOURN: ${{ inputs.tournaments }}
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BOT_GEMINI_SEARCH: ${{ vars.BOT_GEMINI_SEARCH }}
