@@ -122,6 +122,27 @@ class FallbackChainLlm(ThrottledLlm):
             raise last_error
 
 
+class RoundRobinLlm(ThrottledLlm):
+    """Send each call to the next model in a list (a cheap multi-model ensemble).
+
+    With N predictions per question and N models, every model gives one
+    prediction and forecasting-tools takes the median. Each model has its own
+    free-tier quota, so this also spreads the daily load.
+    """
+
+    def __init__(self, members: list[GeneralLlm]) -> None:
+        if not members:
+            raise ValueError("RoundRobinLlm needs at least one model")
+        super().__init__(model=members[0].model, temperature=0.3)
+        self.members = members
+        self._next = 0
+
+    async def invoke(self, prompt, system_prompt=None) -> str:  # type: ignore[override]
+        llm = self.members[self._next % len(self.members)]
+        self._next += 1
+        return await llm.invoke(prompt, system_prompt)
+
+
 def _split_models(value: str) -> list[str]:
     return [m.strip() for m in value.split(",") if m.strip()]
 
@@ -205,13 +226,28 @@ def build_llms(env: Mapping[str, str] | None = None) -> dict | None:
         backups = _split_models(
             _get_env(resolved, "BOT_GEMINI_BACKUP_MODELS") or _DEFAULT_BACKUP_MODELS
         )
-        default_llm = FallbackChainLlm(
+        default_llm: GeneralLlm = FallbackChainLlm(
             model=default_model,
             temperature=0.3,
             timeout=120,
             allowed_tries=3,
             backups=backups,
         )
+        ensemble = _split_models(_get_env(resolved, "BOT_GEMINI_ENSEMBLE") or "")
+        if ensemble:
+            default_llm = RoundRobinLlm(
+                [
+                    FallbackChainLlm(
+                        model=m,
+                        temperature=0.3,
+                        timeout=180,
+                        allowed_tries=3,
+                        backups=backups,
+                        min_interval=15.0 if "gemma" in m.lower() else None,
+                    )
+                    for m in ensemble
+                ]
+            )
         cheap_llm = FallbackChainLlm(
             model=cheap_model,
             temperature=0.3,

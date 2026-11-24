@@ -239,3 +239,28 @@ def test_parse_final_probability():
     assert parse_final_probability("I think 40% is right") is None
     assert parse_final_probability("Probability: 250%") is None
     assert parse_final_probability("") is None
+
+
+def test_gemini_ensemble_round_robin(monkeypatch):
+    import asyncio
+
+    from bot_config import RoundRobinLlm
+
+    llms = build_llms(
+        {"GEMINI_API_KEY": "k", "BOT_GEMINI_ENSEMBLE": "gemini/a, gemini/gemma-x"}
+    )
+    assert llms is not None
+    default = llms["default"]
+    assert isinstance(default, RoundRobinLlm)
+    assert [m.model for m in default.members] == ["gemini/a", "gemini/gemma-x"]
+    assert default.members[1].min_interval == 15.0
+
+    async def fake_invoke(self, prompt, system_prompt=None):
+        return self.model
+
+    monkeypatch.setattr(ThrottledLlm, "invoke", fake_invoke)
+
+    async def three():
+        return [await default.invoke("q") for _ in range(3)]
+
+    assert asyncio.run(three()) == ["gemini/a", "gemini/gemma-x", "gemini/a"]
