@@ -19,6 +19,10 @@ on:
         description: "Only questions scheduled to resolve after this date"
         required: true
         default: "2026-09-01"
+      source:
+        description: "manifold (public, resolved markets) or metaculus (needs a human token)"
+        required: true
+        default: "manifold"
       tournaments:
         description: "Comma-separated tournament slugs or ids (empty = all)"
         required: false
@@ -44,13 +48,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - name: Run backtest
-        run: uv run python backtest.py --n "$IN_N" --models "$IN_MODELS" --predictions "$IN_PRED" --resolved-after "$IN_AFTER" --tournaments "$IN_TOURN"
+        run: uv run python backtest.py --n "$IN_N" --models "$IN_MODELS" --predictions "$IN_PRED" --resolved-after "$IN_AFTER" --tournaments "$IN_TOURN" --source "$IN_SOURCE"
         env:
           IN_N: ${{ inputs.n }}
           IN_MODELS: ${{ inputs.models }}
           IN_PRED: ${{ inputs.predictions }}
           IN_AFTER: ${{ inputs.resolved_after }}
           IN_TOURN: ${{ inputs.tournaments }}
+          IN_SOURCE: ${{ inputs.source }}
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BOT_GEMINI_SEARCH: ${{ vars.BOT_GEMINI_SEARCH }}

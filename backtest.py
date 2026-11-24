@@ -128,12 +128,60 @@ def fetch_questions(n: int, resolved_after: str, tournaments: list[str],
     return kept
 
 
+def fetch_manifold_questions(n: int, resolved_after: str, min_bettors: int = 20,
+                             seed: int = 7) -> list[BinaryQuestion]:
+    """Resolved YES/NO markets from the public Manifold API (no key needed)."""
+    import random
+
+    import requests
+
+    api = "https://api.manifold.markets/v0"
+    after_ms = datetime.fromisoformat(resolved_after).replace(tzinfo=timezone.utc).timestamp() * 1000
+    pool: list[dict] = []
+    sort = "resolve-date"  # most recently resolved first
+    for offset in range(0, 2000, 100):
+        params = {"term": "", "filter": "resolved", "contractType": "BINARY",
+                  "sort": sort, "limit": 100, "offset": offset}
+        r = requests.get(f"{api}/search-markets", timeout=30, params=params)
+        if r.status_code == 400 and sort != "newest":
+            logger.warning("Manifold sort %s refused, using newest", sort)
+            sort = params["sort"] = "newest"
+            r = requests.get(f"{api}/search-markets", timeout=30, params=params)
+        r.raise_for_status()
+        batch = r.json()
+        if not batch:
+            break
+        pool += [m for m in batch
+                 if m.get("resolution") in ("YES", "NO")
+                 and (m.get("resolutionTime") or 0) >= after_ms
+                 and (m.get("createdTime") or 0) >= after_ms - 120 * 86400 * 1000
+                 and (m.get("uniqueBettorCount") or 0) >= min_bettors]
+    logger.info("Manifold pool: %d resolved markets", len(pool))
+    random.Random(seed).shuffle(pool)
+    out: list[BinaryQuestion] = []
+    for m in pool[:n]:
+        full = requests.get(f"{api}/market/{m['id']}", timeout=30).json()
+        desc = (full.get("textDescription") or "").strip()[:3000]
+        out.append(BinaryQuestion(
+            question_text=m["question"],
+            background_info=desc,
+            resolution_criteria=desc or "Resolves YES if the event in the question happens.",
+            fine_print="",
+            page_url=m.get("url") or f"https://manifold.markets/{m['id']}",
+            resolution_string="yes" if m["resolution"] == "YES" else "no",
+        ))
+    return out
+
+
 async def run(n: int, models: list[str], predictions: int, out_dir: str,
-              resolved_after: str, tournaments: list[str]) -> dict:
+              resolved_after: str, tournaments: list[str], source: str = "manifold") -> dict:
     base = build_llms()
     if base is None:
         raise SystemExit("No LLM key set")
-    questions = await asyncio.to_thread(fetch_questions, n, resolved_after, tournaments)
+    if source == "manifold":
+        questions = await asyncio.to_thread(fetch_manifold_questions, n, resolved_after)
+    else:
+        questions = await asyncio.to_thread(fetch_questions, n, resolved_after, tournaments)
     logger.info("Backtest on %d resolved binary questions", len(questions))
 
     preds: dict[str, dict[str, float]] = {}
@@ -192,6 +240,7 @@ async def run(n: int, models: list[str], predictions: int, out_dir: str,
     yes_rate = statistics.mean(1.0 if r["outcome"] else 0.0 for r in common) if common else None
     result = {
         "date": datetime.now(timezone.utc).isoformat(),
+        "source": source,
         "resolved_after": resolved_after,
         "tournaments": tournaments,
         "n_questions": len(questions),
@@ -209,7 +258,7 @@ async def run(n: int, models: list[str], predictions: int, out_dir: str,
 
 def render(result: dict) -> str:
     lines = [
-        f"BACKTEST {result['date'][:16]} resolved_after={result['resolved_after']} "
+        f"BACKTEST {result['date'][:16]} source={result.get('source')} resolved_after={result['resolved_after']} "
         f"tournaments={result['tournaments']} questions={result['n_questions']} "
         f"common={result['n_common']} yes_rate={result['yes_rate']} "
         f"predictions/question={result['predictions_per_question']}",
@@ -244,11 +293,13 @@ if __name__ == "__main__":
     ap.add_argument("--predictions", type=int, default=3)
     ap.add_argument("--resolved-after", default="2026-09-01")
     ap.add_argument("--tournaments", default="", help="Comma-separated tournament slugs or ids")
+    ap.add_argument("--source", choices=["manifold", "metaculus"], default="manifold",
+                    help="metaculus needs a human account token: bot tokens cannot see resolutions")
     ap.add_argument("--out", default="reports/backtest")
     a = ap.parse_args()
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     tournaments = [t.strip() for t in a.tournaments.split(",") if t.strip()]
-    res = asyncio.run(run(a.n, models, a.predictions, a.out, a.resolved_after, tournaments))
+    res = asyncio.run(run(a.n, models, a.predictions, a.out, a.resolved_after, tournaments, a.source))
     text = render(res)
     with open(os.path.join(a.out, "backtest.md"), "w") as f:
         f.write(text + "\n")
