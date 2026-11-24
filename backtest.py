@@ -104,7 +104,16 @@ def fetch_questions(n: int, resolved_after: str, tournaments: list[str]) -> list
             error_if_question_target_missed=False,
         )
     )
-    return [q for q in qs if isinstance(q, BinaryQuestion) and isinstance(q.typed_resolution, bool)]
+    kept = [q for q in qs if isinstance(q, BinaryQuestion) and isinstance(q.typed_resolution, bool)]
+    if len(kept) < len(qs):
+        for q in [q for q in qs if q not in kept][:3]:
+            qj = q.api_json.get("question") or {}
+            logger.warning(
+                "Dropped %s: resolution_string=%r status=%r api resolution=%r keys=%s",
+                q.page_url, q.resolution_string, qj.get("status"), qj.get("resolution"),
+                sorted(k for k in qj.keys() if "resol" in k or "status" in k),
+            )
+    return kept
 
 
 async def run(n: int, models: list[str], predictions: int, out_dir: str,
