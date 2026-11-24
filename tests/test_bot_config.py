@@ -264,3 +264,16 @@ def test_gemini_ensemble_round_robin(monkeypatch):
         return [await default.invoke("q") for _ in range(3)]
 
     assert asyncio.run(three()) == ["gemini/a", "gemini/gemma-x", "gemini/a"]
+
+
+def test_calibrate_probability():
+    from bot_config import calibrate_probability
+
+    assert abs(calibrate_probability(0.5, {}) - 0.5) < 1e-9
+    assert calibrate_probability(0.01, {}) == 0.05
+    assert calibrate_probability(0.99, {}) == 0.95
+    assert 0.5 < calibrate_probability(0.8, {}) < 0.8
+    off = {"BOT_PROB_SCALE": "1", "BOT_PROB_MIN": "0.01"}
+    assert abs(calibrate_probability(0.8, off) - 0.8) < 1e-9
+    assert calibrate_probability(0.001, off) == 0.01
+    assert calibrate_probability(0.8, {"BOT_PROB_SCALE": "abc"}) == calibrate_probability(0.8, {})

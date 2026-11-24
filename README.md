@@ -23,6 +23,21 @@ In this project are 2 files:
 
 Join the conversation about bot creation, get support, and follow updates on the [Metaculus Discord](https://discord.com/invite/NJgCC2nDfh) 'build a forecasting bot' channel.
 
+
+### Backtest and calibration (2026-11-24)
+
+- `Actions -> Backtest (free, no publishing)` runs `backtest.py` on resolved
+  public Manifold markets. Bot tokens cannot see Metaculus resolutions or the
+  community prediction, so Metaculus data cannot be used. Research is off (search
+  would find the outcome) and the prompt date is set one week before close.
+- First result (24 questions, free Gemini, no research): raw score -55 (50% = 0),
+  Brier 0.35; strong over-confidence. Binary forecasts are now pulled toward 50%:
+  `BOT_PROB_SCALE` (default 0.7) and `BOT_PROB_MIN` (default 0.05). Score on the
+  same answers: -25. Set 1 and 0.01 to turn it off.
+- `BOT_GEMINI_ENSEMBLE` (comma-separated models): one prediction per model,
+  median. Off by default: the free tier gave many 503/429 errors for Gemma and
+  3.1 Flash Lite.
+
 ## 30min Video Tutorial
 This tutorial shows you how to set up our template bot so you can start forecasting in the tournament.
 

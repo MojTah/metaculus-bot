@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import re
 import time
@@ -312,3 +313,29 @@ def parse_final_probability(text: str) -> float | None:
     if not 0 <= value <= 100:
         return None
     return value / 100.0
+
+
+def calibrate_probability(p: float, env: Mapping[str, str] | None = None) -> float:
+    """Pull a binary forecast toward 50% and keep it away from 0% and 100%.
+
+    The free-model backtest (2026-11-24, 24 resolved questions, no research)
+    showed strong over-confidence: score -55 raw, -25 with scale 0.7 and
+    floor 0.05 (50% scores 0). Set BOT_PROB_SCALE=1 and BOT_PROB_MIN=0.01
+    to turn this off.
+    """
+    resolved = os.environ if env is None else env
+
+    def _num(key: str, default: float, lo: float, hi: float) -> float:
+        raw = _get_env(resolved, key)
+        try:
+            val = float(raw) if raw is not None else default
+        except ValueError:
+            val = default
+        return min(max(val, lo), hi)
+
+    scale = _num("BOT_PROB_SCALE", 0.7, 0.1, 2.0)
+    floor = _num("BOT_PROB_MIN", 0.05, 0.001, 0.49)
+    p = min(max(p, 1e-4), 1 - 1e-4)
+    x = scale * math.log(p / (1 - p))
+    q = 1 / (1 + math.exp(-x))
+    return min(max(q, floor), 1 - floor)
