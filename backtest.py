@@ -86,7 +86,18 @@ def variant_llms(model: str, base: dict) -> dict:
     }
 
 
-def fetch_questions(n: int, resolved_after: str, tournaments: list[str]) -> list[BinaryQuestion]:
+class AnonymousClient(MetaculusClient):
+    """Read public question data without the bot token.
+
+    The API hides resolutions and the community prediction from bot accounts.
+    """
+
+    def _get_auth_headers(self) -> dict[str, dict[str, str]]:  # type: ignore[override]
+        return {"headers": {"Accept-Language": "en"}}
+
+
+def fetch_questions(n: int, resolved_after: str, tournaments: list[str],
+                    anonymous: bool = True) -> list[BinaryQuestion]:
     after = datetime.fromisoformat(resolved_after).replace(tzinfo=timezone.utc)
     api_filter = ApiFilter(
         allowed_statuses=["resolved"],
@@ -96,8 +107,9 @@ def fetch_questions(n: int, resolved_after: str, tournaments: list[str]) -> list
         allowed_tournaments=tournaments or None,
         group_question_mode="exclude",
     )
+    client = AnonymousClient() if anonymous else MetaculusClient()
     qs = asyncio.run(
-        MetaculusClient().get_questions_matching_filter(
+        client.get_questions_matching_filter(
             api_filter,
             num_questions=n,
             randomly_sample=True,
