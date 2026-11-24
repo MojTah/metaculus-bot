@@ -46,3 +46,12 @@ for m in MODELS:
         if g and m.startswith("gemma"):
             continue
         print(f"PROBE {m:28s} grounded={g!s:5s} -> {check(m, g)}", flush=True)
+
+# Free news source used by news_research.py
+try:
+    from news_research import fetch_google_news
+
+    items = fetch_google_news("Federal Reserve interest rates")
+    print(f"PROBE google-news-rss -> {len(items)} items; first: {items[0]['date'] if items else '-'} | {items[0]['title'][:80] if items else '-'}")
+except Exception as e:
+    print(f"PROBE google-news-rss -> ERR {type(e).__name__}: {str(e)[:120]}")
