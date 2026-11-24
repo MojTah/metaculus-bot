@@ -24,13 +24,41 @@ import logging
 import math
 import os
 import statistics
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import dotenv
 from forecasting_tools import ApiFilter, BinaryQuestion, BinaryReport, MetaculusClient
 
 from bot_config import ThrottledLlm, build_llms
+import main as bot_main
 from main import FallTemplateBot2026
+
+_SIM_NOW: datetime | None = None
+
+
+class _SimDatetime(datetime):
+    """main.py writes "Today is <date>" into prompts; in a backtest that date
+    must be before the question closed, or the model just answers "the
+    deadline passed, so NO"."""
+
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        if _SIM_NOW is not None:
+            return _SIM_NOW if tz is None else _SIM_NOW.astimezone(tz)
+        return datetime.now(tz)
+
+
+bot_main.datetime = _SimDatetime  # type: ignore[misc]
+
+
+def simulated_today(q: BinaryQuestion) -> datetime | None:
+    """A date one week before close (not before the question opened)."""
+    if q.close_time is None:
+        return None
+    sim = q.close_time - timedelta(days=7)
+    if q.open_time is not None and sim < q.open_time:
+        sim = q.open_time + (q.close_time - q.open_time) / 2
+    return sim.replace(tzinfo=None)
 
 dotenv.load_dotenv()
 logger = logging.getLogger("backtest")
@@ -171,12 +199,17 @@ def fetch_manifold_questions(n: int, resolved_after: str, min_bettors: int = 20,
             fine_print="",
             page_url=m.get("url") or f"https://manifold.markets/{m['id']}",
             resolution_string="yes" if m["resolution"] == "YES" else "no",
+            open_time=datetime.fromtimestamp(m["createdTime"] / 1000, tz=timezone.utc),
+            close_time=datetime.fromtimestamp(
+                min(m.get("closeTime") or m["resolutionTime"], m["resolutionTime"]) / 1000,
+                tz=timezone.utc),
         ))
     return out
 
 
 async def run(n: int, models: list[str], predictions: int, out_dir: str,
               resolved_after: str, tournaments: list[str], source: str = "manifold") -> dict:
+    global _SIM_NOW
     base = build_llms()
     if base is None:
         raise SystemExit("No LLM key set")
@@ -199,7 +232,11 @@ async def run(n: int, models: list[str], predictions: int, out_dir: str,
             llms=variant_llms(model, base),
         )
         started = datetime.now(timezone.utc)
-        reports = await bot.forecast_questions(questions, return_exceptions=True)
+        reports = []
+        for q in questions:
+            _SIM_NOW = simulated_today(q)
+            reports += await bot.forecast_questions([q], return_exceptions=True)
+        _SIM_NOW = None
         preds[model] = {}
         errors[model] = 0
         for q, r in zip(questions, reports):

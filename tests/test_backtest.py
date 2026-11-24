@@ -27,3 +27,28 @@ def test_render_runs():
         "rows": [{"url": "u", "title": "t", "outcome": True, "pred": {"gemini/m": 0.4}}],
     }
     assert "BACKTEST" in render(res)
+
+
+def test_simulated_today_and_prompt_date():
+    from datetime import datetime, timezone
+
+    from forecasting_tools import BinaryQuestion
+
+    import backtest
+    import main
+
+    q = BinaryQuestion(
+        question_text="q", background_info="", resolution_criteria="", fine_print="",
+        page_url="u", resolution_string="no",
+        open_time=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        close_time=datetime(2026, 11, 9, tzinfo=timezone.utc),
+    )
+    assert backtest.simulated_today(q) == datetime(2026, 11, 2)
+    short = q.model_copy(update={"open_time": datetime(2026, 11, 6, tzinfo=timezone.utc)})
+    assert backtest.simulated_today(short).date().isoformat() == "2026-11-07"
+    backtest._SIM_NOW = datetime(2026, 11, 2)
+    try:
+        assert main.datetime.now().strftime("%Y-%m-%d") == "2026-11-02"
+    finally:
+        backtest._SIM_NOW = None
+    assert main.datetime.now().year >= 2026
