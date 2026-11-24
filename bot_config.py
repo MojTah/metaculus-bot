@@ -21,11 +21,15 @@ _OTHER_LLM_KEYS = ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
 # The throttle keeps each model a little under its limit.
 _FREE_TIER_RPM = (
     ("flash-lite", 15),
-    ("gemma", 30),
+    # Gemma: 30 RPM but only 16K input tokens per minute; a forecast prompt
+    # is 3-5K tokens, so about 4 calls per minute.
+    ("gemma", 4),
     ("flash", 5),
 )
-_DEFAULT_GROUNDED_MODELS = "gemini/gemini-2.5-flash,gemini/gemini-2.5-flash-lite"
-_DEFAULT_BACKUP_MODELS = "gemini/gemini-2.5-flash-lite,gemini/gemini-2.5-flash"
+# Gemini 2.5 (the only free tier with Google Search grounding) is closed to
+# new users since 2026-11-24 (HTTP 404). Grounding is now opt-in.
+_DEFAULT_GROUNDED_MODELS = "gemini/gemini-flash-lite-latest"
+_DEFAULT_BACKUP_MODELS = "gemini/gemini-3.1-flash-lite,gemini/gemma-4-26b-a4b-it"
 
 
 def free_tier_interval(model: str) -> float:
@@ -258,23 +262,28 @@ def build_llms(env: Mapping[str, str] | None = None) -> dict | None:
         )
         researcher: str | GeneralLlm
         search = (_get_env(resolved, "BOT_GEMINI_SEARCH") or "true").lower()
+        source = (_get_env(resolved, "BOT_RESEARCH_SOURCE") or "news").lower()
+        research_llm = FallbackChainLlm(
+            model=default_model,
+            temperature=0.1,
+            timeout=120,
+            allowed_tries=3,
+            backups=backups,
+        )
         if _has_asknews(resolved):
             researcher = "asknews/news-summaries"
-        elif search in ("1", "true"):
+        elif search not in ("1", "true") or source == "none":
+            researcher = default_llm
+        elif source == "news":
+            from news_research import NewsResearchLlm
+
+            researcher = NewsResearchLlm(research_llm)
+        elif source == "grounded":
             grounded = (
                 _get_env(resolved, "BOT_GEMINI_GROUNDED_MODELS")
                 or _DEFAULT_GROUNDED_MODELS
             )
-            researcher = FallbackResearchLlm(
-                _split_models(grounded),
-                fallback=FallbackChainLlm(
-                    model=default_model,
-                    temperature=0.1,
-                    timeout=120,
-                    allowed_tries=3,
-                    backups=backups,
-                ),
-            )
+            researcher = FallbackResearchLlm(_split_models(grounded), fallback=research_llm)
         else:
             researcher = default_llm
         return {

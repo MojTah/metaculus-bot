@@ -42,6 +42,8 @@ def test_openrouter_model_overrides():
 
 
 def test_gemini_only_defaults_and_predictions():
+    from news_research import NewsResearchLlm
+
     env = {"GEMINI_API_KEY": "gemini-test-key"}
     llms = build_llms(env)
     assert llms is not None
@@ -50,16 +52,26 @@ def test_gemini_only_defaults_and_predictions():
     assert name(llms["parser"]) == "gemini/gemini-flash-lite-latest"
     for role in ("default", "summarizer", "parser"):
         assert isinstance(llms[role], ThrottledLlm)
-    researcher = llms["researcher"]
-    assert isinstance(researcher, FallbackResearchLlm)
-    assert [m.model for m in researcher.chain] == [
-        "gemini/gemini-2.5-flash",
-        "gemini/gemini-2.5-flash-lite",
+    assert [b.model for b in llms["default"].backups] == [
+        "gemini/gemini-3.1-flash-lite",
+        "gemini/gemma-4-26b-a4b-it",
     ]
-    assert researcher.chain[0].litellm_kwargs["tools"] == [{"googleSearch": {}}]
-    assert researcher.fallback.model == "gemini/gemini-flash-lite-latest"
+    researcher = llms["researcher"]
+    assert isinstance(researcher, NewsResearchLlm)
+    assert researcher.llm.model == "gemini/gemini-flash-lite-latest"
     assert is_gemini_only(env) is True
     assert predictions_per_report(env) == 3
+
+
+def test_gemini_grounded_research_option():
+    llms = build_llms({"GEMINI_API_KEY": "k", "BOT_RESEARCH_SOURCE": "grounded"})
+    assert llms is not None
+    researcher = llms["researcher"]
+    assert isinstance(researcher, FallbackResearchLlm)
+    assert [m.model for m in researcher.chain] == ["gemini/gemini-flash-lite-latest"]
+    assert researcher.chain[0].litellm_kwargs["tools"] == [{"googleSearch": {}}]
+    none = build_llms({"GEMINI_API_KEY": "k", "BOT_RESEARCH_SOURCE": "none"})
+    assert none is not None and none["researcher"] is none["default"]
 
 
 def test_gemini_model_overrides():
@@ -79,7 +91,11 @@ def test_gemini_model_overrides():
 
 def test_gemini_grounded_models_override():
     llms = build_llms(
-        {"GEMINI_API_KEY": "k", "BOT_GEMINI_GROUNDED_MODELS": "gemini/a, gemini/b ,"}
+        {
+            "GEMINI_API_KEY": "k",
+            "BOT_RESEARCH_SOURCE": "grounded",
+            "BOT_GEMINI_GROUNDED_MODELS": "gemini/a, gemini/b ,",
+        }
     )
     assert llms is not None
     assert [m.model for m in llms["researcher"].chain] == ["gemini/a", "gemini/b"]
@@ -88,7 +104,7 @@ def test_gemini_grounded_models_override():
 def test_free_tier_interval():
     assert 4 < free_tier_interval("gemini/gemini-flash-lite-latest") < 5
     assert 13 < free_tier_interval("gemini/gemini-2.5-flash") < 14
-    assert free_tier_interval("gemini/gemma-4-31b-it") < 3
+    assert 15 < free_tier_interval("gemini/gemma-4-31b-it") < 20
 
 
 def test_asknews_researcher():

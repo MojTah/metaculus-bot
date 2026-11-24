@@ -34,6 +34,11 @@ Join the conversation about bot creation, get support, and follow updates on the
   Brier 0.35; strong over-confidence. Binary forecasts are now pulled toward 50%:
   `BOT_PROB_SCALE` (default 0.7) and `BOT_PROB_MIN` (default 0.05). Score on the
   same answers: -25. Set 1 and 0.01 to turn it off.
+- Research: Google retired the free Gemini 2.5 models for new users on
+  2026-11-24 (HTTP 404), and Google Search grounding has no free quota on
+  newer models. Default research is now `news_research.py`: free Google News
+  RSS headlines (no key) plus the LLM. `BOT_RESEARCH_SOURCE` = `news` (default),
+  `grounded` (paid tier) or `none`. Backups: 3.1 Flash Lite, then Gemma 4 26B.
 - `BOT_GEMINI_ENSEMBLE` (comma-separated models): one prediction per model,
   median. Off by default: the free tier gave many 503/429 errors for Gemma and
   3.1 Flash Lite.

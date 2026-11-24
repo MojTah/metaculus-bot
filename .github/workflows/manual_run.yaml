@@ -69,6 +69,7 @@ jobs:
           BOT_GEMINI_ENSEMBLE: ${{ vars.BOT_GEMINI_ENSEMBLE }}
           BOT_PROB_SCALE: ${{ vars.BOT_PROB_SCALE }}
           BOT_PROB_MIN: ${{ vars.BOT_PROB_MIN }}
+          BOT_RESEARCH_SOURCE: ${{ vars.BOT_RESEARCH_SOURCE }}
       - name: List Gemini models (names only)
         if: always()
         run: |
