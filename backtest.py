@@ -210,6 +210,13 @@ async def run(n: int, models: list[str], predictions: int, out_dir: str,
                 logger.warning("%s failed on %s: %s", model, q.page_url, str(r)[:300])
         logger.info("%s done in %.0f s, %d errors", model,
                     (datetime.now(timezone.utc) - started).total_seconds(), errors[model])
+        # Partial result after each model, so a timeout does not lose everything.
+        pairs = [(preds[model][q.page_url], bool(q.typed_resolution))
+                 for q in questions if q.page_url in preds[model]]
+        if pairs:
+            logger.info("PARTIAL %s: n=%d score=%.2f brier=%.4f", model, len(pairs),
+                        statistics.mean(baseline_score(p, o) for p, o in pairs),
+                        statistics.mean(brier(p, o) for p, o in pairs))
 
     rows = []
     for q in questions:
