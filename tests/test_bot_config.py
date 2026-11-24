@@ -228,3 +228,14 @@ def test_fallback_chain_uses_backup_on_error(monkeypatch):
     llm = FallbackChainLlm(model="gemini/main", backups=["gemini/b1", "gemini/b2"])
     # FallbackChainLlm.invoke calls super().invoke (patched) first, then backups
     assert asyncio.run(llm.invoke("q")) == "answer from gemini/b1"
+
+
+def test_parse_final_probability():
+    from bot_config import parse_final_probability
+
+    assert parse_final_probability("blah\nProbability: 23%") == 0.23
+    assert parse_final_probability("Probability: 10%\n...\n**Probability:** 7.5 %") == 0.075
+    assert parse_final_probability("Final answer: Probability: 100%") == 1.0
+    assert parse_final_probability("I think 40% is right") is None
+    assert parse_final_probability("Probability: 250%") is None
+    assert parse_final_probability("") is None

@@ -7,6 +7,7 @@ from typing import Literal
 import dotenv
 
 # Runtime helpers (env validation, banners, dependency-warning suppression).
+from bot_config import parse_final_probability
 from bot_helpers import (
     check_environment,
     print_run_summary_banner,
@@ -237,6 +238,15 @@ class FallTemplateBot2026(ForecastBot):
     ) -> ReasonedPrediction[float]:
         reasoning = await self.get_llm("default", "llm").invoke(prompt)
         logger.info(f"Reasoning for URL {question.page_url}: {reasoning}")
+        # Read "Probability: ZZ%" directly; this saves two parser calls per
+        # forecast on the free Gemini quota. Fall back to the LLM parser.
+        direct = parse_final_probability(reasoning)
+        if direct is not None:
+            decimal_pred = max(0.01, min(0.99, direct))
+            logger.info(
+                f"Forecasted URL {question.page_url} with prediction: {decimal_pred}."
+            )
+            return ReasonedPrediction(prediction_value=decimal_pred, reasoning=reasoning)
         parsing_instructions = clean_indents(
             f"""
             The text given to you is trying to give a probability forecast for a binary question.

@@ -1,0 +1,55 @@
+name: Backtest (free, no publishing)
+
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "Number of open binary questions"
+        required: true
+        default: "20"
+      models:
+        description: "Comma-separated litellm model names"
+        required: true
+        default: "gemini/gemini-flash-lite-latest,gemini/gemini-3.1-flash-lite,gemini/gemma-4-31b-it"
+      predictions:
+        description: "Predictions per question"
+        required: true
+        default: "3"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.1"
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run backtest
+        run: uv run python backtest.py --n "$IN_N" --models "$IN_MODELS" --predictions "$IN_PRED"
+        env:
+          IN_N: ${{ inputs.n }}
+          IN_MODELS: ${{ inputs.models }}
+          IN_PRED: ${{ inputs.predictions }}
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BOT_GEMINI_SEARCH: ${{ vars.BOT_GEMINI_SEARCH }}
+          BOT_GEMINI_GROUNDED_MODELS: ${{ vars.BOT_GEMINI_GROUNDED_MODELS }}
+          BOT_GEMINI_BACKUP_MODELS: ${{ vars.BOT_GEMINI_BACKUP_MODELS }}
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest
+          path: reports/backtest/
+          if-no-files-found: ignore

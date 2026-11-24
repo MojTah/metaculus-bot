@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from collections.abc import Mapping
 from typing import Literal
@@ -261,3 +262,17 @@ def predictions_per_report(env: Mapping[str, str] | None = None) -> int:
         if parsed is not None and 1 <= parsed <= 10:
             return parsed
     return 3 if is_gemini_only(resolved) else 5
+
+
+_PROBABILITY_RE = re.compile(r"probability\W{0,5}\s*(\d{1,3}(?:\.\d+)?)\s*%", re.IGNORECASE)
+
+
+def parse_final_probability(text: str) -> float | None:
+    """Return the last "Probability: ZZ%" in text as a decimal, or None."""
+    matches = _PROBABILITY_RE.findall(text or "")
+    if not matches:
+        return None
+    value = float(matches[-1])
+    if not 0 <= value <= 100:
+        return None
+    return value / 100.0
